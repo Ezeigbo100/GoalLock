@@ -161,4 +161,36 @@
   (var-get campaign-counter)
 )
 
-
+;; Refund contributors if goal is not met
+(define-public (refund (campaign-id uint))
+  (let
+    (
+      (campaign (unwrap! (map-get? Campaigns { campaign-id: campaign-id }) ERR-CAMPAIGN-NOT-FOUND)) ;; Fetch campaign details
+      (contribution (unwrap! (map-get? Contributions { campaign-id: campaign-id, contributor: tx-sender }) ERR-NOT-AUTHORIZED)) ;; Fetch contributor's contribution
+      (amount (get amount contribution)) ;; Get contribution amount
+      (deadline (get deadline campaign)) ;; Get campaign deadline
+      (total-funded (get total-funded campaign)) ;; Get total funded amount
+      (funding-goal (get funding-goal campaign)) ;; Get funding goal
+    )
+    (asserts! (>= block-height deadline) ERR-DEADLINE-NOT-PASSED) ;; Ensure the deadline has passed
+    (asserts! (< total-funded funding-goal) ERR-GOAL-NOT-REACHED) ;; Ensure the goal was not met
+    (asserts! (get active campaign) ERR-CAMPAIGN-ACTIVE) ;; Ensure the campaign is still active
+    
+    ;; Refund contributor
+    (try! (as-contract (stx-transfer? amount tx-sender tx-sender)))
+    
+    ;; Remove contribution record
+    (map-delete Contributions { campaign-id: campaign-id, contributor: tx-sender })
+    
+    ;; Log the refund event
+    (print {
+      event: "refund-issued",
+      campaign-id: campaign-id,
+      amount: amount,
+      contributor: tx-sender,
+      block-height: block-height
+    })
+    
+    (ok true)
+  )
+)
